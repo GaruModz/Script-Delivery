@@ -1,14 +1,14 @@
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
 
 local ANCHOR_NAME = "DeliveryTargetAnchor"
 local DIST_HIGH = 26
 local DIST_LOW = 24
 
--- [UPGRADE] Delay dinaikkan sedikit ke 2.5 detik biar server sempat memvalidasi uang pengiriman
-local LOOP_INTERVAL = 2.5 
+local LOOP_INTERVAL = 6 
 local PLATFORM_SIZE = Vector3.new(10, 1, 10)
-local PLATFORM_LIFE = 3
+local PLATFORM_LIFE = 8
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -67,7 +67,35 @@ frame.Size = UDim2.new(0, 220, 0, 120)
 frame.Position = UDim2.new(1, -240, 1, -140)
 frame.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
 frame.BorderSizePixel = 0
+frame.Active = true
+frame.Draggable = true
 frame.Parent = screenGui
+
+-- [FITUR GESER / DRAG FOR MOBILE & PC]
+local dragging, dragInput, dragStart, startPos
+frame.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = input.Position
+        startPos = frame.Position
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+            end
+        end)
+    end
+end)
+frame.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+        dragInput = input
+    end
+end)
+UserInputService.InputChanged:Connect(function(input)
+    if input == dragInput and dragging then
+        local delta = input.Position - dragStart
+        frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
+end)
 
 local corner = Instance.new("UICorner")
 corner.CornerRadius = UDim.new(0, 14)
@@ -82,7 +110,7 @@ local title = Instance.new("TextLabel")
 title.Size = UDim2.new(1, -20, 0, 24)
 title.Position = UDim2.new(0, 10, 0, 8)
 title.BackgroundTransparency = 1
-title.Text = "FishGuy Delivery (Touch-Fix v3)"
+title.Text = "FishGuy Delivery (Draggable v4)"
 title.Font = Enum.Font.GothamBold
 title.TextSize = 13
 title.TextColor3 = Color3.fromRGB(255, 200, 80)
@@ -137,7 +165,6 @@ local function triggerTouch(part, character)
     local root = character:FindFirstChild("HumanoidRootPart")
     if not root then return end
     
-    -- Memaksa eksekusi TouchInterest (Sentuhan fisik ke server)
     if firetouchinterest and part:IsA("BasePart") then
         pcall(function()
             firetouchinterest(root, part, 0)
@@ -166,10 +193,10 @@ local function doTeleport()
     spawnPlatformAt(targetPos)
     task.wait(0.1)
 
-    -- Teleport Karakter
     rootPart.CFrame = CFrame.new(targetPos, anchorCF.Position)
     
-    -- [TOUCH FIX] Kirim respon sentuhan ke target pad
+    task.wait(6)
+
     triggerTouch(anchor, character)
 
     useHigh = not useHigh
