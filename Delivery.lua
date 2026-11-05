@@ -5,8 +5,8 @@ local ANCHOR_NAME = "DeliveryTargetAnchor"
 local DIST_HIGH = 26
 local DIST_LOW = 24
 
--- [FIX 1] Kasih delay 1.8 detik biar server smpt mroses reward & gak nge-block pas Level 15+
-local LOOP_INTERVAL = 1.8 
+-- [UPGRADE] Delay dinaikkan sedikit ke 2.5 detik biar server sempat memvalidasi uang pengiriman
+local LOOP_INTERVAL = 2.5 
 local PLATFORM_SIZE = Vector3.new(10, 1, 10)
 local PLATFORM_LIFE = 3
 
@@ -16,7 +16,6 @@ local playerGui = player:WaitForChild("PlayerGui")
 local currentPlatform = nil
 local platformFadeThread = nil
 
--- [FIX 2] Function buat nembak Remote Job biar Session gak ke-reset pas naik level
 local function refreshJobSession()
     pcall(function()
         game:GetService("ReplicatedStorage"):WaitForChild("Remotes"):WaitForChild("RequestStartJobSession"):FireServer("Delivery", "jobPad")
@@ -83,7 +82,7 @@ local title = Instance.new("TextLabel")
 title.Size = UDim2.new(1, -20, 0, 24)
 title.Position = UDim2.new(0, 10, 0, 8)
 title.BackgroundTransparency = 1
-title.Text = "FishGuy Delivery (Fixed v2)"
+title.Text = "FishGuy Delivery (Touch-Fix v3)"
 title.Font = Enum.Font.GothamBold
 title.TextSize = 13
 title.TextColor3 = Color3.fromRGB(255, 200, 80)
@@ -133,10 +132,24 @@ local function updateLabel()
     distLabel.Text = "Next: " .. nextDist .. " studs | " .. (isRunning and "ON ✓" or "OFF")
 end
 
+local function triggerTouch(part, character)
+    if not part or not character then return end
+    local root = character:FindFirstChild("HumanoidRootPart")
+    if not root then return end
+    
+    -- Memaksa eksekusi TouchInterest (Sentuhan fisik ke server)
+    if firetouchinterest and part:IsA("BasePart") then
+        pcall(function()
+            firetouchinterest(root, part, 0)
+            task.wait(0.1)
+            firetouchinterest(root, part, 1)
+        end)
+    end
+end
+
 local function doTeleport()
     local anchor = findAnchor()
     if not anchor then 
-        -- Kalau anchor gak ketemu, coba trigger remote job ulang
         refreshJobSession()
         return false 
     end
@@ -151,9 +164,13 @@ local function doTeleport()
     local targetPos = anchorCF.Position + offset + Vector3.new(0, 3, 0)
 
     spawnPlatformAt(targetPos)
-    task.wait(0.05)
+    task.wait(0.1)
 
+    -- Teleport Karakter
     rootPart.CFrame = CFrame.new(targetPos, anchorCF.Position)
+    
+    -- [TOUCH FIX] Kirim respon sentuhan ke target pad
+    triggerTouch(anchor, character)
 
     useHigh = not useHigh
     updateLabel()
@@ -164,5 +181,54 @@ local function startLoop()
     isRunning = true
     button.Text = "Stop Loop"
     button.BackgroundColor3 = COLOR_ON
-    stroke.Color = Color3.fromRGB(50, 220, 
-    
+    stroke.Color = Color3.fromRGB(50, 220, 100)
+    updateLabel()
+
+    refreshJobSession()
+
+    loopThread = task.spawn(function()
+        local counter = 0
+        while isRunning do
+            local ok = doTeleport()
+            if not ok then
+                task.wait(1)
+            end
+            
+            counter = counter + 1
+            if counter >= 5 then
+                counter = 0
+                refreshJobSession()
+            end
+            
+            task.wait(LOOP_INTERVAL)
+        end
+    end)
+end
+
+local function stopLoop()
+    isRunning = false
+    if loopThread then
+        task.cancel(loopThread)
+        loopThread = nil
+    end
+    button.Text = "Start Loop"
+    button.BackgroundColor3 = COLOR_OFF
+    stroke.Color = Color3.fromRGB(255, 180, 50)
+    updateLabel()
+    schedulePlatformRemoval()
+end
+
+player.CharacterRemoving:Connect(function()
+    destroyPlatform()
+end)
+
+button.MouseEnter:Connect(function()
+    button.BackgroundColor3 = isRunning and Color3.fromRGB(80, 230, 120) or Color3.fromRGB(255, 210, 80)
+end)
+button.MouseLeave:Connect(function()
+    button.BackgroundColor3 = isRunning and COLOR_ON or COLOR_OFF
+end)
+
+button.MouseButton1Click:Connect(function()
+    if isRunning then stopLoop() else startLoop() end
+end)
